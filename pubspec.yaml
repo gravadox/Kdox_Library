@@ -1,0 +1,29 @@
+name: Kdox_Library
+version: 0.3.0
+
+description: Books reading application minimalistic and quick.
+
+publish_to: 'Gravadox.dev' # Remove if you want to publish to pub.dev
+
+environment:
+  sdk: ">=2.18.0 <3.0.0"  # adjust to your Flutter/Dart version
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  bitsdojo_window:
+  syncfusion_flutter_pdfviewer: ^30.1.41
+  cupertino_icons: ^1.0.8
+  flutter_acrylic: ^1.1.4
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/sample.pdf
