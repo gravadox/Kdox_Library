@@ -16,6 +16,7 @@ dependencies:
   syncfusion_flutter_pdfviewer: ^30.1.41
   cupertino_icons: ^1.0.8
   flutter_acrylic: ^1.1.4
+  file_picker: ^6.1.1
 
 
 dev_dependencies:
