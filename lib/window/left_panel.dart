@@ -6,21 +6,18 @@ class LeftPanel extends StatefulWidget {
   final VoidCallback onZoomOut;
   final VoidCallback onOpenFile;
   final int zoomPercent;
-
   final void Function(String) onSearch;
   final VoidCallback onNextSearch;
   final VoidCallback onPrevSearch;
-
   final void Function(int) onJumpToPage;
   final int currentPage;
   final int totalPages;
-
   final int searchCurrentIndex;
   final int searchTotalCount;
-
-  // NEW: layout mode toggles
   final VoidCallback onSetSinglePageLayout;
   final VoidCallback onSetContinuousLayout;
+  final String fileName;
+  final VoidCallback? onHidePanel; // Add callback for hiding panel
 
   const LeftPanel({
     super.key,
@@ -38,24 +35,38 @@ class LeftPanel extends StatefulWidget {
     required this.searchTotalCount,
     required this.onSetSinglePageLayout,
     required this.onSetContinuousLayout,
+    required this.fileName,
+    this.onHidePanel,
   });
 
   @override
-  State<LeftPanel> createState() => _LeftPanelState();
+  State<LeftPanel> createState() => LeftPanelState();
 }
 
-class _LeftPanelState extends State<LeftPanel> {
+// Made public so it can be accessed from WindowFrame
+class LeftPanelState extends State<LeftPanel> with TickerProviderStateMixin {
+  final double panelItemSize = 42;
   late TextEditingController _pageController;
   late FocusNode _pageFocusNode;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  late AnimationController _searchAnimationController;
+  late Animation<double> _searchAnimation;
+  bool _showSearchTools = false;
 
   @override
   void initState() {
     super.initState();
-    _pageController =
-        TextEditingController(text: widget.currentPage.toString());
+    _pageController = TextEditingController(text: widget.currentPage.toString());
     _pageFocusNode = FocusNode();
+    _searchAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _searchAnimation = CurvedAnimation(
+      parent: _searchAnimationController,
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
@@ -65,6 +76,18 @@ class _LeftPanelState extends State<LeftPanel> {
         !_pageFocusNode.hasFocus) {
       _pageController.text = widget.currentPage.toString();
     }
+    if (widget.searchTotalCount > 0 && !_showSearchTools) {
+      setState(() {
+        _showSearchTools = true;
+      });
+      _searchAnimationController.forward();
+    } else if (widget.searchTotalCount == 0 && _showSearchTools) {
+      _searchAnimationController.reverse().then((_) {
+        setState(() {
+          _showSearchTools = false;
+        });
+      });
+    }
   }
 
   @override
@@ -73,7 +96,27 @@ class _LeftPanelState extends State<LeftPanel> {
     _pageFocusNode.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _searchAnimationController.dispose();
     super.dispose();
+  }
+
+  // Public method to focus the search field
+  void focusSearchField() {
+    // Use multiple frame callbacks to ensure everything is settled
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _searchFocusNode.canRequestFocus) {
+            _searchFocusNode.requestFocus();
+            // Select all text in the search field for easy replacement
+            _searchController.selection = TextSelection(
+              baseOffset: 0,
+              extentOffset: _searchController.text.length,
+            );
+          }
+        });
+      }
+    });
   }
 
   void _onPageSubmitted(String value) {
@@ -92,7 +135,6 @@ class _LeftPanelState extends State<LeftPanel> {
 
   void _onSearchSubmitted(String value) {
     widget.onSearch(value);
-    // Keep focus on search input after submitting
     FocusScope.of(context).requestFocus(_searchFocusNode);
   }
 
@@ -103,121 +145,198 @@ class _LeftPanelState extends State<LeftPanel> {
       child: Container(
         color: Colors.transparent,
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            SizedBox(height: 40, child: MoveWindow()),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Zoom buttons
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildZoomButton(Icons.zoom_out, widget.onZoomOut),
-                    const SizedBox(width: 8),
-                    _buildZoomButton(Icons.zoom_in, widget.onZoomIn),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${widget.zoomPercent}%',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Layout mode buttons (NEW)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton(
-                      onPressed: widget.onSetContinuousLayout,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white12,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
+            // TOP SECTION WITH FILE NAME AND HIDE BUTTON
+            SizedBox(
+              height: 40, 
+              child: MoveWindow(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          height: panelItemSize,
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              widget.fileName,
+                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ),
                       ),
-                      child: const Text(
-                        '1',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    ElevatedButton(
-                      onPressed: widget.onSetSinglePageLayout,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white12,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
+                      // HIDE PANEL BUTTON
+                      if (widget.onHidePanel != null)
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: widget.onHidePanel,
+                              borderRadius: BorderRadius.circular(4),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(4),
+                                  color: Colors.white.withOpacity(0.1),
+                                ),
+                                child: const Icon(
+                                  Icons.chevron_left,
+                                  color: Colors.white70,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      child: const Text(
-                        '2',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Search input
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: TextField(
-                    controller: _searchController,
-                    focusNode: _searchFocusNode,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Search',
-                      hintStyle: const TextStyle(color: Colors.white54),
-                      filled: true,
-                      fillColor: Colors.white12,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(6),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: _onSearchSubmitted,
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-
-                // Prev / Next search buttons with match counter
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildNavButton(Icons.arrow_upward, widget.onPrevSearch),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${widget.searchTotalCount == 0 ? 0 : widget.searchCurrentIndex - 1}/${widget.searchTotalCount}',
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildNavButton(Icons.arrow_downward, widget.onNextSearch),
-                  ],
+              ),
+            ),
+            // SEARCH INPUT
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: Container(
+                height: panelItemSize,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(10),
+                    topRight: Radius.circular(10),
+                  ),
+                  color: Color.fromARGB(25, 255, 255, 255),
                 ),
-                const SizedBox(height: 20),
-
-                // Page navigation
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'search',
+                    hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
+                    border: OutlineInputBorder(
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(10),
+                        topRight: Radius.circular(10),
+                      ),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    isDense: true,
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: _onSearchSubmitted,
+                ),
+              ),
+            ),
+            // SEARCH NAV BUTTONS
+            AnimatedBuilder(
+              animation: _searchAnimation,
+              builder: (context, child) {
+                return SizeTransition(
+                  sizeFactor: _searchAnimation,
+                  child: _showSearchTools
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                          child: Container(
+                            height: panelItemSize,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(10),
+                                bottomRight: Radius.circular(10),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                  child: Text(
+                                    '${widget.searchCurrentIndex}/${widget.searchTotalCount}',
+                                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                  ),
+                                ),
+                                const Spacer(),
+                                _buildTransparentIcon(Icons.keyboard_arrow_up, widget.onPrevSearch),
+                                _buildTransparentIcon(Icons.keyboard_arrow_down, widget.onNextSearch),
+                              ],
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            // ZOOM CONTROLS
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: panelItemSize,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.white.withOpacity(0.3)),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${widget.zoomPercent}%',
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: panelItemSize,
+                          height: panelItemSize,
+                          child: _buildIconButton(Icons.remove, widget.onZoomOut),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: panelItemSize,
+                          height: panelItemSize,
+                          child: _buildIconButton(Icons.add, widget.onZoomIn),
+                        ),
+                      ],
+                    ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildIconButton(Icons.view_agenda_outlined, widget.onSetContinuousLayout),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildIconButton(Icons.view_module_outlined, widget.onSetSinglePageLayout),
+                        ),
+                      ],
+                    ),
+            ),
+            const Spacer(),
+            // PAGE INPUT AND COUNTER
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     SizedBox(
-                      width: 50,
-                      height: 30,
+                      width: 60,
+                      height: 28,
                       child: TextField(
                         controller: _pageController,
                         focusNode: _pageFocusNode,
                         keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white),
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(color: Colors.white, fontSize: 14.0),
                         decoration: InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white12,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(10),
                             borderSide: BorderSide.none,
                           ),
                           contentPadding:
@@ -231,28 +350,28 @@ class _LeftPanelState extends State<LeftPanel> {
                       '/ ${widget.totalPages}',
                       style: const TextStyle(color: Colors.white),
                     ),
+                    SizedBox(width: 12),
                   ],
                 ),
-              ],
-            ),
-
-            // Open File button
+            // OPEN FILE BUTTON
             Padding(
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.all(12.0),
               child: SizedBox(
                 width: double.infinity,
-                height: 48,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white12,
+                height: panelItemSize,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.white.withOpacity(0.3)),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                   onPressed: widget.onOpenFile,
-                  icon: const Icon(Icons.folder_open, color: Colors.white),
-                  label: const Text('Open File',
-                      style: TextStyle(color: Colors.white)),
+                  icon: const Icon(Icons.folder_open, color: Colors.white70, size: 16),
+                  label: const Text(
+                    'open a file',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
                 ),
               ),
             ),
@@ -262,39 +381,31 @@ class _LeftPanelState extends State<LeftPanel> {
     );
   }
 
-  Widget _buildZoomButton(IconData icon, VoidCallback onPressed) {
+  Widget _buildIconButton(IconData icon, VoidCallback onPressed) {
     return SizedBox(
-      width: 40,
-      height: 40,
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
+      width: panelItemSize,
+      height: panelItemSize,
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
           padding: EdgeInsets.zero,
-          backgroundColor: Colors.white12,
+          side: BorderSide(color: Colors.white.withOpacity(0.3)),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
         onPressed: onPressed,
-        child: Icon(icon, color: Colors.white, size: 20),
+        child: Icon(icon, color: Colors.white70, size: 16),
       ),
     );
   }
 
-  Widget _buildNavButton(IconData icon, VoidCallback onPressed) {
-    return SizedBox(
-      width: 40,
-      height: 30,
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          padding: EdgeInsets.zero,
-          backgroundColor: Colors.white12,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
-          ),
-        ),
-        onPressed: onPressed,
-        child: Icon(icon, color: Colors.white, size: 18),
-      ),
+  Widget _buildTransparentIcon(IconData icon, VoidCallback onPressed) {
+    return IconButton(
+      icon: Icon(icon, size: 18, color: Colors.white70),
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      splashRadius: 20,
+      onPressed: onPressed,
     );
   }
 }

@@ -20,12 +20,15 @@ class RightPanel extends StatefulWidget {
   ) onActionsChanged;
 
   final void Function(int currentIndex, int totalCount)? onSearchResultChanged;
+  final void Function(String fileName)? onFileNameChanged;
+
   final PdfPageLayoutMode pageLayoutMode;
 
   const RightPanel({
     super.key,
     required this.onActionsChanged,
     this.onSearchResultChanged,
+    this.onFileNameChanged,
     required this.pageLayoutMode,
   });
 
@@ -40,6 +43,10 @@ class _RightPanelState extends State<RightPanel> {
   int _currentPage = 1;
   int _totalPages = 1;
   double _viewerZoom = 1.0;
+  bool _isLoading = false;
+  
+  // Add a unique key that changes every time we open a file
+  int _fileLoadCounter = 0;
 
   @override
   void initState() {
@@ -49,16 +56,25 @@ class _RightPanelState extends State<RightPanel> {
 
   @override
   void dispose() {
-    _searchResult?.removeListener(_onSearchResultChanged);
+    _cleanupSearchResult();
     super.dispose();
   }
 
+  void _cleanupSearchResult() {
+    if (_searchResult != null) {
+      _searchResult!.removeListener(_onSearchResultChanged);
+      _searchResult = null;
+    }
+  }
+
   void _onSearchResultChanged() {
-    if (_searchResult == null) return;
+    if (_searchResult == null || !mounted) return;
     final currentIndex = _searchResult!.currentInstanceIndex + 1;
     final totalCount = _searchResult!.totalInstanceCount;
     widget.onSearchResultChanged?.call(currentIndex, totalCount);
-    setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _notifyActions() {
@@ -77,38 +93,82 @@ class _RightPanelState extends State<RightPanel> {
   }
 
   Future<void> _performSearch(String text) async {
-    final result = await _pdfController.searchText(text);
-    _searchResult?.removeListener(_onSearchResultChanged);
-    _searchResult = result;
-    _searchResult?.addListener(_onSearchResultChanged);
-    setState(() {});
+    if (_isLoading || _filePath == null) return;
+    
+    try {
+      final result = await _pdfController.searchText(text);
+      _cleanupSearchResult();
+      _searchResult = result;
+      _searchResult?.addListener(_onSearchResultChanged);
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      // Handle search errors gracefully
+      print('Search error: $e');
+    }
   }
 
   void _jumpToPage(int page) {
-    if (page >= 1 && page <= _totalPages) {
+    if (page >= 1 && page <= _totalPages && !_isLoading) {
       _pdfController.jumpToPage(page);
     }
   }
 
   Future<void> _openFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf'],
-    );
-    if (result != null && result.files.single.path != null && result.files.single.path!.isNotEmpty) {
-      setState(() {
-        _filePath = result.files.single.path!;
-        _pdfController = PdfViewerController();
-        _searchResult?.removeListener(_onSearchResultChanged);
-        _searchResult = null;
-        _viewerZoom = 1.0;
-        _currentPage = 1;
-        _totalPages = 1;
-      });
+    if (_isLoading) return; // Prevent multiple simultaneous file operations
+    
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+      );
+      
+      if (result != null && result.files.single.path != null && result.files.single.path!.isNotEmpty) {
+        setState(() {
+          _isLoading = true;
+        });
+
+        // Clean up previous state
+        _cleanupSearchResult();
+        
+        // Reset all state variables
+        final newFilePath = result.files.single.path!;
+        
+        setState(() {
+          _filePath = newFilePath;
+          _fileLoadCounter++; // Increment counter to force widget rebuild
+          _pdfController = PdfViewerController(); // Create new controller
+          _viewerZoom = 1.0;
+          _currentPage = 1;
+          _totalPages = 1;
+        });
+
+        // Extract just the file name from the path
+        final fileName = newFilePath.split(Platform.pathSeparator).last;
+        widget.onFileNameChanged?.call(fileName);
+        
+        // Small delay to ensure state is properly set before finishing loading
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error opening file: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
   void _zoomIn() {
+    if (_isLoading) return;
     setState(() {
       _viewerZoom = (_viewerZoom + 0.2).clamp(1.0, 5.0);
       _pdfController.zoomLevel = _viewerZoom;
@@ -116,6 +176,7 @@ class _RightPanelState extends State<RightPanel> {
   }
 
   void _zoomOut() {
+    if (_isLoading) return;
     setState(() {
       _viewerZoom = (_viewerZoom - 0.2).clamp(1.0, 5.0);
       _pdfController.zoomLevel = _viewerZoom;
@@ -129,7 +190,7 @@ class _RightPanelState extends State<RightPanel> {
       focusNode: FocusNode(),
       autofocus: true,
       onKeyEvent: (event) {
-        if (event is KeyDownEvent) {
+        if (event is KeyDownEvent && !_isLoading) {
           final isCtrl = RawKeyboard.instance.keysPressed.contains(LogicalKeyboardKey.controlLeft) ||
               RawKeyboard.instance.keysPressed.contains(LogicalKeyboardKey.controlRight);
           if (isCtrl) {
@@ -143,6 +204,7 @@ class _RightPanelState extends State<RightPanel> {
       },
       child: Listener(
         onPointerSignal: (event) {
+          if (_isLoading) return;
           final ctrlPressed = RawKeyboard.instance.keysPressed.contains(LogicalKeyboardKey.controlLeft) ||
               RawKeyboard.instance.keysPressed.contains(LogicalKeyboardKey.controlRight);
           if (ctrlPressed && event is PointerScrollEvent) {
@@ -172,25 +234,44 @@ class _RightPanelState extends State<RightPanel> {
                         ),
                       ),
                     )
-                  : SfPdfViewer.file(
-                      File(_filePath!),
-                      key: ValueKey(_filePath),
-                      controller: _pdfController,
-                      pageLayoutMode: widget.pageLayoutMode,
-                      onDocumentLoaded: (details) {
-                        setState(() {
-                          _totalPages = details.document.pages.count;
-                          _pdfController.zoomLevel = _viewerZoom;
-                        });
-                      },
-                      onPageChanged: (details) {
-                        setState(() {
-                          _currentPage = details.newPageNumber;
-                        });
-                      },
-                      enableDoubleTapZooming: false,
-                      enableTextSelection: true,
-                    ),
+                  : _isLoading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                          ),
+                        )
+                      : SfPdfViewer.file(
+                          File(_filePath!),
+                          key: ValueKey('pdf_viewer_$_fileLoadCounter'), // Use counter for unique key
+                          controller: _pdfController,
+                          pageLayoutMode: widget.pageLayoutMode,
+                          onDocumentLoaded: (details) {
+                            if (mounted) {
+                              setState(() {
+                                _totalPages = details.document.pages.count;
+                                _pdfController.zoomLevel = _viewerZoom;
+                              });
+                            }
+                          },
+                          onPageChanged: (details) {
+                            if (mounted) {
+                              setState(() {
+                                _currentPage = details.newPageNumber;
+                              });
+                            }
+                          },
+                          onDocumentLoadFailed: (details) {
+                            print('PDF load failed: ${details.error}');
+                            if (mounted) {
+                              setState(() {
+                                _isLoading = false;
+                                _filePath = null;
+                              });
+                            }
+                          },
+                          enableDoubleTapZooming: false,
+                          enableTextSelection: true,
+                        ),
             ),
           ),
         ),
