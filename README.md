@@ -53,6 +53,7 @@ flutter build  windows
 - settings menu to control features
 - Auto-update mechanism
 - optimizations for larger pdf files and lag prevention + handling large images & complex layout
+- multi-tabs and & split-view
 - Command line support `kdox path/to/file.pdf`
 - More zoom controls (fit-to-width, fit-to-page) & touchpad zoom support
 - Dark mode toggle
