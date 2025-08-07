@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/gestures.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'left_panel.dart';
 import 'right_panel.dart';

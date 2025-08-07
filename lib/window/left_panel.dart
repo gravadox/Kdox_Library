@@ -255,7 +255,7 @@ class LeftPanelState extends State<LeftPanel> with TickerProviderStateMixin {
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 8.0),
                                   child: Text(
-                                    '${widget.searchCurrentIndex}/${widget.searchTotalCount}',
+                                    '${widget.searchTotalCount == 0 ? 0 : widget.searchCurrentIndex - 1}/${widget.searchTotalCount}',
                                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                                   ),
                                 ),
