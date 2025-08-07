@@ -52,6 +52,7 @@ flutter build  windows
 - Cross-platform support (Linux, macOS)
 - settings menu to control features
 - Auto-update mechanism
+- optimizations for larger pdf files and lag prevention + handling large images & complex layout
 - Command line support `kdox path/to/file.pdf`
 - More zoom controls (fit-to-width, fit-to-page) & touchpad zoom support
 - Dark mode toggle
