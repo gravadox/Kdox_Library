@@ -1,4 +1,4 @@
-# Kdox Minimal PDF Viewer
+## <img alt="Icon" width="21" style="vertical-align: middle;" src="https://github.com/user-attachments/assets/be761579-a989-4750-8f17-be9d6bb4eb2c" /> Kdox Minimal PDF Viewer
 
 Fast, lightweight, and distraction-free PDF viewer built for simplicity and performance.  
 Designed to open PDFs quickly without consuming system resources.  
@@ -23,7 +23,9 @@ Currently available for **Windows**, with support for other platforms soon to co
 ---
 
 ## Showcase
- TODO: add pictures here
+<img src="https://raw.githubusercontent.com/gravadox/Kdox_Library/main/screenshots/1.png"/>
+<img src="https://raw.githubusercontent.com/gravadox/Kdox_Library/main/screenshots/2.png"/>
+<img src="https://raw.githubusercontent.com/gravadox/Kdox_Library/main/screenshots/3.png"/>
 
 ---
 
